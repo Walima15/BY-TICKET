@@ -1,0 +1,34 @@
+# Soroban toolchain container. Usage (from repo root):
+#   docker compose run --rm soroban cargo test
+#   docker compose run --rm soroban stellar contract build
+#   docker compose run --rm soroban bash /work/scripts/deploy-testnet.sh
+services:
+  soroban:
+    build: ./contracts
+    image: by-tickets/soroban:28.1.0
+    working_dir: /work/contracts
+    volumes:
+      - ./:/work
+      # Build output & caches stay in Docker volumes: fast, and out of OneDrive / git.
+      - by-contracts-target:/work/contracts/target
+      - by-cargo-registry:/usr/local/cargo/registry
+      # Stellar CLI identities (deployer/admin keys) live here, never in the repo.
+      - by-stellar-config:/root/.config/stellar
+    environment:
+      CARGO_TERM_COLOR: always
+
+  # Throwaway Postgres that applies supabase/migrations and runs the RLS tests:
+  #   docker compose run --rm db-test
+  db-test:
+    image: postgres:16-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./supabase:/supabase:ro
+    entrypoint: ["sh", "/supabase/tests/run.sh"]
+
+volumes:
+  by-contracts-target:
+  by-cargo-registry:
+  by-stellar-config:

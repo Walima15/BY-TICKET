@@ -13,8 +13,14 @@
     "start": "npm --prefix apps/web run start",
     "lint": "npm --prefix apps/web run lint",
     "typecheck": "npm --prefix apps/web run typecheck",
-    "contracts:test": "cargo test --manifest-path contracts/Cargo.toml",
-    "contracts:build": "cd contracts && stellar contract build",
-    "check": "npm run typecheck && npm run lint && npm run contracts:test"
+    "contracts:image": "docker compose build soroban",
+    "contracts:test": "docker compose run --rm soroban cargo test",
+    "contracts:lint": "docker compose run --rm soroban bash -c \"cargo fmt --check && cargo clippy --all-targets -- -D warnings\"",
+    "contracts:build": "docker compose run --rm soroban stellar contract build",
+    "contracts:deploy": "docker compose run --rm soroban bash /work/scripts/deploy-testnet.sh",
+    "contracts:smoke": "docker compose run --rm soroban bash /work/scripts/smoke-testnet.sh",
+    "contracts:shell": "docker compose run --rm soroban bash",
+    "db:test": "docker compose run --rm db-test",
+    "check": "npm run typecheck && npm run lint && npm run contracts:test && npm run db:test"
   }
 }

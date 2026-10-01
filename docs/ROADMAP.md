@@ -5,8 +5,8 @@
 | # | Phase | Status |
 |---|---|---|
 | 1 | Scaffold, folder structure, env setup, README | ✅ done |
-| 2 | Soroban contracts + tests + testnet deploy | ⏳ next |
-| 3 | Database schema (Supabase + RLS) + auth | ⬜ |
+| 2 | Soroban contracts + tests + testnet deploy | ✅ done |
+| 3 | Database schema (Supabase + RLS) + auth | ⏳ next |
 | 4 | Wallet connection (Freighter + custodial) + ticket purchase | ⬜ |
 | 5 | My Tickets, rotating signed QR, offline scanner check-in | ⬜ |
 | 6 | Organizer dashboard (events, tiers, analytics, payouts, rules) | ⬜ |

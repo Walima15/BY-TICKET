@@ -10,7 +10,7 @@ friendly to low-bandwidth connections.
 - **Customers** discover events, buy with a Stellar wallet *or* just an email, earn BY Points, collect badges.
 - **Tickets** are verifiable on-chain; check-in is single-use; QR codes rotate and can't be screenshotted.
 
-> Status: **Phase 1 of 8 complete** (scaffold). See [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: **Phase 2 of 8 complete**: scaffold, plus contracts tested and live on Stellar testnet. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Stack
 
@@ -31,26 +31,24 @@ friendly to low-bandwidth connections.
 │       ├── app/              routes + api/health
 │       ├── components/       ui/ (shadcn), layout/, brand/
 │       └── lib/              env, stellar/, supabase/, payments/, security/
-├── contracts/                Soroban Cargo workspace
-│   ├── event_ticket/         events, tickets, transfers, check-in, revenue split
-│   ├── rewards/              BY Points (SEP-41 token)
-│   └── attendance_badge/     proof-of-attendance badges
+├── contracts/                Soroban Cargo workspace (built and tested in Docker)
+│   ├── Dockerfile            Rust 1.92 + wasm32v1-none + Stellar CLI 28.1
+│   ├── event_ticket/         events, tiers, tickets, transfers, check-in, revenue split
+│   ├── rewards/              BY Points (SEP-41 token) + perks
+│   ├── attendance_badge/     proof-of-attendance badges
+│   └── deployments/          testnet.json (deployed contract IDs + wasm hashes)
 ├── supabase/                 migrations/ + seed.sql
-├── scripts/                  gen-secrets.mjs (+ testnet deploy in Phase 2)
+├── scripts/                  gen-secrets.mjs, deploy-testnet.sh, smoke-testnet.sh
+├── docker-compose.yml        `soroban` toolchain service
 └── docs/                     ARCHITECTURE · CONTRACTS · API · SECURITY · DECISIONS · ROADMAP
 ```
 
 ## Prerequisites
 
 - **Node.js ≥ 20.9** (22 LTS recommended)
-- **Rust ≥ 1.91** with the Soroban target: `rustup target add wasm32v1-none`
-- **A linker for Rust on Windows**, one of:
-  - Visual Studio Build Tools with the **"Desktop development with C++"** workload (default MSVC toolchain), or
-  - the GNU toolchain, which ships its own linker:
-    `rustup toolchain install stable-x86_64-pc-windows-gnu --target wasm32v1-none`, then run cargo as
-    `cargo +stable-x86_64-pc-windows-gnu ...`
-- **Stellar CLI** (Phase 2, for build + deploy): `winget install --id Stellar.StellarCLI` or
-  `cargo install --locked stellar-cli` — see the [Stellar docs](https://developers.stellar.org/docs/tools/cli/install-cli)
+- **Docker Desktop** for contracts: Rust, the WASM target and the Stellar CLI all live in the `soroban` image,
+  so you don't install them locally. (Native Rust also works if you prefer: Rust ≥ 1.91, `wasm32v1-none`,
+  Stellar CLI 28; see DECISIONS D-014 for the Windows caveats.)
 - A **Supabase** project (Phase 3) — free tier is fine
 - **Freighter** browser extension, set to *Testnet*, for wallet testing
 
@@ -63,12 +61,15 @@ npm run setup
 # 2. (optional) fund the platform account on testnet via Friendbot
 npm run secrets -- --fund
 
-# 3. run the app
-npm run dev            # http://localhost:3000
-# health check:        http://localhost:3000/api/health
-
-# 4. contracts
+# 3. contracts (Docker): build the toolchain image once, test, deploy to testnet
+npm run contracts:image
 npm run contracts:test
+npm run contracts:deploy   # writes contract IDs into apps/web/.env.local
+npm run contracts:smoke    # optional: live end-to-end purchase → check-in on testnet
+
+# 4. run the app
+npm run dev            # http://localhost:3000
+# health check:        http://localhost:3000/api/health  ("contracts": true after deploy)
 ```
 
 `npm run setup` copies `apps/web/.env.example` to `apps/web/.env.local` and fills in:
@@ -79,7 +80,7 @@ npm run contracts:test
 | `QR_CREDENTIAL_SIGNING_KEY` / `NEXT_PUBLIC_QR_CREDENTIAL_PUBLIC_KEY` | Ed25519 pair for signed ticket QR credentials |
 | `STELLAR_PLATFORM_SECRET` / `NEXT_PUBLIC_STELLAR_PLATFORM_PUBLIC_KEY` | testnet platform account (fee sponsor, platform fee receiver) |
 
-You then add your Supabase URL + keys by hand (Phase 3); contract IDs are written by the deploy script (Phase 2).
+You then add your Supabase URL + keys by hand (Phase 3); contract IDs are written by `npm run contracts:deploy`.
 Every variable is documented in [`apps/web/.env.example`](apps/web/.env.example) and validated with zod at startup.
 
 ## Scripts (repo root)
@@ -90,21 +91,33 @@ Every variable is documented in [`apps/web/.env.example`](apps/web/.env.example)
 | `npm run secrets [-- --fund \| --force]` | (re)generate missing secrets; `--fund` uses testnet Friendbot |
 | `npm run dev` / `build` / `start` | Next.js app |
 | `npm run typecheck` / `lint` | TypeScript + ESLint |
-| `npm run contracts:test` | `cargo test` for all contracts |
+| `npm run contracts:image` | build the `soroban` Docker toolchain image |
+| `npm run contracts:test` | `cargo test` for all contracts (in Docker) |
+| `npm run contracts:lint` | `cargo fmt --check` + `clippy -D warnings` |
 | `npm run contracts:build` | `stellar contract build` → WASM |
+| `npm run contracts:deploy` | deploy to testnet, write IDs to `apps/web/.env.local` + `contracts/deployments/testnet.json` |
+| `npm run contracts:smoke` | live testnet end-to-end check (buy, split, check-in, replay rejected, points, badge) |
+| `npm run contracts:shell` | shell inside the toolchain container (`stellar …`, `cargo …`) |
 | `npm run check` | typecheck + lint + contract tests |
 
 ## Deploy
 
-- **Contracts → testnet:** Phase 2 adds `scripts/deploy-testnet` (build, deploy, initialise, write IDs into
-  `apps/web/.env.local`).
+- **Contracts → testnet:** `npm run contracts:deploy`. The script creates and funds a `by-deployer` CLI identity
+  (it becomes the contract admin), builds the WASM, deploys a mock `USDC` asset contract, `rewards`,
+  `attendance_badge` and `event_ticket`, registers `event_ticket` as minter, adds the treasury's USDC
+  trustline, then writes the IDs into `apps/web/.env.local`. It's safe to re-run: each run deploys fresh
+  instances. Options: `USDC_MODE=circle`, `FEE_BPS=250`, `ORGANIZER=G…`
+  (e.g. `docker compose run --rm -e ORGANIZER=G... soroban bash /work/scripts/deploy-testnet.sh`).
+  Full interface: [docs/CONTRACTS.md](docs/CONTRACTS.md).
 - **Web:** any Node host (Vercel, Fly, Render, or a VPS). Set every variable from `.env.example` in the host's
   environment; `NEXT_PUBLIC_*` values are baked in at build time, so rebuild after changing them.
 
 ## Security
 
-Keys and secrets are never committed and never put in `NEXT_PUBLIC_*` variables. Deployer/admin keys live
-in the Stellar CLI keystore, not in `.env`. See [docs/SECURITY.md](docs/SECURITY.md).
+Keys and secrets are never committed and never put in `NEXT_PUBLIC_*` variables. Deployer/admin, USDC-issuer and
+smoke-test keys live in the Stellar CLI keystore inside the `by-stellar-config` Docker volume, not in `.env` or
+the repo. Removing that volume (`docker volume rm`) loses the testnet admin key, so you'd have to redeploy.
+See [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Notes for this machine
 

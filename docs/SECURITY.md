@@ -8,7 +8,7 @@
 | `STELLAR_PLATFORM_SECRET` | server env only (testnet); KMS on mainnet | fee sponsorship, custodial account creation | new keypair → update signer on platform account |
 | `CUSTODIAL_KEY_ENCRYPTION_KEY` | server env only; KMS on mainnet | AES-256-GCM encryption of custodial wallet secrets | key version prefix on ciphertext; re-encrypt job |
 | `QR_CREDENTIAL_SIGNING_KEY` | server env only | signs ticket credentials | publish new public key; scanners accept old+new during overlap |
-| Contract deployer / admin | `stellar keys` CLI identity (OS keychain), **not** in `.env` | deploy + admin calls | transfer admin role to a multisig account before mainnet |
+| Contract deployer / admin | `stellar keys` identity `by-deployer`, stored in the `by-stellar-config` Docker volume, **not** in `.env` or the repo (`by-usdc-issuer` and the `by-smoke-*` test identities live there too) | deploy + admin calls | transfer admin role to a multisig account before mainnet |
 
 Rules:
 1. **Never** put a secret in a `NEXT_PUBLIC_*` variable — those are inlined into browser JS.

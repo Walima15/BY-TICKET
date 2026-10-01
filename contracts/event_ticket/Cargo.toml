@@ -16,3 +16,6 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Integration tests run the real rewards + badge contracts natively.
+rewards = { path = "../rewards" }
+attendance_badge = { path = "../attendance_badge" }

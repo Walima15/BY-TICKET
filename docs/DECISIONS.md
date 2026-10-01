@@ -77,17 +77,61 @@ set `UPSTASH_REDIS_REST_URL`/`_TOKEN`.
 Uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`) and `SUPABASE_SECRET_KEY` (`sb_secret_…`).
 Legacy `anon` / `service_role` JWT keys work in the same variables.
 
-### D-014 Contract build environment on this Windows machine (open)
-Found during Phase 1 verification:
-- The default `stable-x86_64-pc-windows-msvc` toolchain has no linker: Visual Studio 2022 Community is
-  installed without the C++ workload / Windows SDK.
-- Workaround installed: `stable-x86_64-pc-windows-gnu` (bundled linker). `cargo build` of the contracts succeeds.
-- `cargo test` is blocked by Windows **Application Control (os error 4551)**, most likely Smart App Control:
-  it refuses to execute the unsigned build-script binaries Cargo compiles for the `testutils` feature set.
-Options: build/test inside a Docker Linux container (Docker Desktop is installed), WSL2, CI (GitHub Actions),
-or turning Smart App Control off. To be decided before Phase 2.
+### D-014 Contract toolchain runs in Docker (resolved in Phase 2)
+Found during Phase 1: the Windows MSVC toolchain had no linker (VS installed without the C++ workload), and with
+the GNU toolchain `cargo test` was blocked by Windows **Application Control (os error 4551)**, which refuses the
+unsigned build-script binaries Cargo compiles.
+**Decision (chosen by the user):** all contract work runs in a Linux container — `contracts/Dockerfile`
+(`rust:1.92-bookworm` + `wasm32v1-none` + rustfmt/clippy + Stellar CLI 28.1.0), driven by `docker-compose.yml`
+and the `npm run contracts:*` scripts. Build output, the cargo registry and the Stellar CLI keystore live in
+named Docker volumes (fast, outside OneDrive). Same image works on macOS/Linux/CI, so the toolchain is pinned
+for everyone.
 
 ### D-013 Development inside OneDrive
 The workspace lives in a OneDrive-synced folder. That works but makes `npm install` / `cargo build` slow and
 can cause file-lock errors. Recommended: move the repo outside OneDrive, or mark `node_modules`, `.next`, and
 `contracts/target` as "always keep on this device" / excluded from sync.
+
+---
+
+## Phase 2 — Contracts
+
+### D-015 Payment token = USDC Stellar Asset Contract; testnet uses a mock USDC by default
+`event_ticket` takes the payment token address in its constructor, so it works with any SEP-41 token.
+On testnet the deploy script issues its own `USDC` classic asset (issuer = a `by-usdc-issuer` CLI identity)
+and deploys its SAC, so we can mint test balances freely. `USDC_MODE=circle` uses Circle's testnet USDC
+instead. XLM settlement = deploy with the native XLM SAC as payment token (a second `event_ticket`
+instance, or a per-event token in a later version).
+
+### D-016 Classic accounts need a USDC trustline
+Because USDC is a classic asset, every **G…** account that receives it (treasury, organizers, artists, buyers,
+resale sellers) needs a trustline, otherwise the SAC transfer fails and the whole purchase reverts. Handled:
+treasury in the deploy script. To handle: Phase 3/4 create trustlines for custodial accounts (sponsored by the
+platform account) and prompt Freighter users; Phase 6 checks split recipients before `create_event`.
+Contract (**C…**) addresses don't need trustlines.
+
+### D-017 No per-owner ticket list on-chain
+Unbounded per-owner vectors in contract storage get more expensive with every write and are a griefing vector.
+The contract stores tickets by id and emits `ticket_minted` / `ticket_transferred`; the app indexes these events
+into Supabase for "My Tickets" and always re-checks `get_ticket` on-chain before trusting ownership.
+
+### D-018 `mint_ticket(payer, owner, …)`
+Separating payer from owner lets the platform account pay on-chain after an off-chain (mobile money) payment
+settles, and lets users buy tickets for friends. Purchase points go to the owner.
+
+### D-019 Paid resale settles on-chain
+`transfer_ticket(…, price)` with `price > 0` requires the buyer's auth and moves the payment token buyer → seller
+in the same call, so the resale cap is enforced on the actual payment rather than a self-reported number.
+Off-chain side payments can't be prevented by any ticketing system; the transfer limit bounds them.
+No resale royalty yet (ROADMAP: secondary marketplace).
+
+### D-020 Fee snapshot per event; pause doesn't block check-in
+Each event stores the platform `fee_bps` at creation so a later fee change never alters an organizer's agreed
+terms. `set_paused(true)` stops sales and transfers (incident response) but `validate_and_check_in` keeps
+working so an event in progress isn't stranded at the door.
+
+### D-021 Points and badges are minted by `event_ticket` through cross-contract calls
+`event_ticket` is registered as minter on `rewards` and `attendance_badge` (`set_minter`) and passes its own
+address as `minter`. A ticket purchase or check-in and its rewards are therefore atomic: no points without
+a real purchase or check-in. Badge minting is idempotent per (event, attendee), so a user holding two tickets
+for the same event gets one badge.
