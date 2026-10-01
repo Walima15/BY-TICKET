@@ -1,0 +1,36 @@
+# Dependencies & build output
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Rust / Soroban
+contracts/target/
+contracts/**/test_snapshots/
+.stellar/
+
+# Env — only the template is committed
+.env
+.env.*
+!.env.example
+
+# Keys
+*.pem
+*.key
+secrets/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+npm-debug.log*
+*.log
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/

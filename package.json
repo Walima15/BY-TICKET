@@ -1,0 +1,20 @@
+{
+  "name": "by-tickets",
+  "private": true,
+  "description": "BY Tickets — Buy. Attend. Earn. Connect. Event ticketing & rewards on Stellar.",
+  "engines": {
+    "node": ">=20.9"
+  },
+  "scripts": {
+    "setup": "npm --prefix apps/web install && node scripts/gen-secrets.mjs",
+    "secrets": "node scripts/gen-secrets.mjs",
+    "dev": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web run start",
+    "lint": "npm --prefix apps/web run lint",
+    "typecheck": "npm --prefix apps/web run typecheck",
+    "contracts:test": "cargo test --manifest-path contracts/Cargo.toml",
+    "contracts:build": "cd contracts && stellar contract build",
+    "check": "npm run typecheck && npm run lint && npm run contracts:test"
+  }
+}
