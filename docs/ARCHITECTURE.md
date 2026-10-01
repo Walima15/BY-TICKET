@@ -122,19 +122,81 @@ sequenceDiagram
 | Event descriptions, images, tiers metadata | — | ✅ (+ hash anchored on-chain) |
 | Users, roles, organizer approval | role addresses on-chain | ✅ profiles, RLS |
 
+## Data model (Supabase)
+
+Rows marked *chain mirror* hold an on-chain id and tx hash and are written only by the server after the
+transaction is verified (see SECURITY.md → Database access model).
+
+```mermaid
+erDiagram
+  auth_users ||--|| profiles : "trigger creates"
+  profiles ||--o{ user_roles : has
+  profiles ||--o{ wallets : owns
+  wallets ||--o| custodial_keys : "encrypted secret"
+  profiles ||--o| organizers : "applies as"
+  organizers ||--o{ events : runs
+  events ||--o{ ticket_tiers : offers
+  events ||--o{ event_scanners : "door staff"
+  profiles ||--o{ orders : places
+  ticket_tiers ||--o{ orders : "for"
+  orders ||--o{ tickets : "mints (chain mirror)"
+  tickets ||--o{ ticket_transfers : "chain mirror"
+  tickets ||--o{ ticket_credentials : "QR device keys"
+  tickets ||--o{ checkins : "door scans"
+  profiles ||--o{ points_ledger : "chain mirror"
+  events ||--o{ badges : "chain mirror"
+  perks ||--o{ redemptions : "chain mirror"
+
+  events {
+    uuid id PK
+    uuid organizer_id FK
+    text title
+    timestamptz starts_at
+    int capacity
+    int max_transfers
+    numeric resale_cap_units
+    jsonb splits
+    event_status status
+    bigint chain_event_id UK
+  }
+  tickets {
+    uuid id PK
+    bigint chain_ticket_id UK
+    text owner_public_key
+    uuid owner_user_id FK
+    ticket_status status
+    text mint_tx_hash UK
+  }
+  orders {
+    uuid id PK
+    numeric total_units
+    payment_method payment_method
+    order_status status
+    text idempotency_key
+    text tx_hash UK
+  }
+```
+
+Also: `platform_settings` (fee, FX rate), `audit_log`, `chain_cursors` (indexer position per contract),
+`idempotency_keys`, `wallet_challenges` (Freighter ownership proofs).
+
 ## Code layout
 
 ```
 apps/web/src/
-  app/            routes (customer, organizer, scanner, admin) + /api route handlers
-  components/     ui/ (shadcn), layout/, feature components
+  proxy.ts        session refresh + optimistic redirect for protected routes
+  app/            routes (customer, organizer, scanner, admin, login, auth callbacks) + /api route handlers
+  components/     ui/ (shadcn), layout/, forms/, feature components
   lib/
     env.ts        zod-validated environment
+    auth/         session (getViewer / requireRole), sign-in bootstrap, safe redirects
+    custodial/    AES-256-GCM key sealing, custodial wallet provisioning
     stellar/      network config, RPC client, contract clients, Freighter helpers
-    supabase/     browser / server / admin clients
+    supabase/     browser / server / admin clients, generated database.types.ts
+    validation/   zod schemas shared by Server Actions and tests
     payments/     pricing (USDC ↔ ZMW), PaymentRampAdapter + stub
-    security/     rate limiting, QR credentials, key encryption
+    security/     rate limiting, Server Action guard
 contracts/        Soroban workspace: event_ticket, rewards, attendance_badge
-supabase/         migrations/, seed.sql
-scripts/          gen-secrets, deploy-testnet
+supabase/         migrations/, tests/ (RLS suite + Supabase shim), seed.sql
+scripts/          gen-secrets, gen-db-types, deploy-testnet, smoke-testnet
 ```

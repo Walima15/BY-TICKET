@@ -10,7 +10,8 @@ friendly to low-bandwidth connections.
 - **Customers** discover events, buy with a Stellar wallet *or* just an email, earn BY Points, collect badges.
 - **Tickets** are verifiable on-chain; check-in is single-use; QR codes rotate and can't be screenshotted.
 
-> Status: **Phase 2 of 8 complete**: scaffold, plus contracts tested and live on Stellar testnet. See [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: **Phase 3 of 8 complete**: contracts are live on Stellar testnet; the database schema with RLS and email
+> sign-in is built and tested. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Stack
 
@@ -37,7 +38,7 @@ friendly to low-bandwidth connections.
 │   ├── rewards/              BY Points (SEP-41 token) + perks
 │   ├── attendance_badge/     proof-of-attendance badges
 │   └── deployments/          testnet.json (deployed contract IDs + wasm hashes)
-├── supabase/                 migrations/ + seed.sql
+├── supabase/                 migrations/ (schema, RLS, RPCs, storage), tests/ (RLS suite), seed.sql
 ├── scripts/                  gen-secrets.mjs, deploy-testnet.sh, smoke-testnet.sh
 ├── docker-compose.yml        `soroban` toolchain service
 └── docs/                     ARCHITECTURE · CONTRACTS · API · SECURITY · DECISIONS · ROADMAP
@@ -67,7 +68,12 @@ npm run contracts:test
 npm run contracts:deploy   # writes contract IDs into apps/web/.env.local
 npm run contracts:smoke    # optional: live end-to-end purchase → check-in on testnet
 
-# 4. run the app
+# 4. database: test the migrations locally, then apply them to your Supabase project
+npm run db:test            # 79 RLS / privilege checks in a throwaway Postgres
+#    apply supabase/migrations/* (see supabase/README.md), then add the Supabase URL + keys
+#    and ADMIN_EMAILS=<your email> to apps/web/.env.local
+
+# 5. run the app
 npm run dev            # http://localhost:3000
 # health check:        http://localhost:3000/api/health  ("contracts": true after deploy)
 ```
@@ -80,7 +86,8 @@ npm run dev            # http://localhost:3000
 | `QR_CREDENTIAL_SIGNING_KEY` / `NEXT_PUBLIC_QR_CREDENTIAL_PUBLIC_KEY` | Ed25519 pair for signed ticket QR credentials |
 | `STELLAR_PLATFORM_SECRET` / `NEXT_PUBLIC_STELLAR_PLATFORM_PUBLIC_KEY` | testnet platform account (fee sponsor, platform fee receiver) |
 
-You then add your Supabase URL + keys by hand (Phase 3); contract IDs are written by `npm run contracts:deploy`.
+You then add your Supabase URL + keys by hand; contract IDs are written by `npm run contracts:deploy`.
+Supabase project setup (migrations, auth URLs, the sign-in email template) is in [supabase/README.md](supabase/README.md).
 Every variable is documented in [`apps/web/.env.example`](apps/web/.env.example) and validated with zod at startup.
 
 ## Scripts (repo root)
@@ -91,6 +98,9 @@ Every variable is documented in [`apps/web/.env.example`](apps/web/.env.example)
 | `npm run secrets [-- --fund \| --force]` | (re)generate missing secrets; `--fund` uses testnet Friendbot |
 | `npm run dev` / `build` / `start` | Next.js app |
 | `npm run typecheck` / `lint` | TypeScript + ESLint |
+| `npm test` | web unit tests (Vitest): key encryption, redirects, validation |
+| `npm run db:test` | apply all migrations to a throwaway Postgres (Docker) and run the RLS test suite |
+| `npm run db:types` | regenerate `database.types.ts` from the migrations |
 | `npm run contracts:image` | build the `soroban` Docker toolchain image |
 | `npm run contracts:test` | `cargo test` for all contracts (in Docker) |
 | `npm run contracts:lint` | `cargo fmt --check` + `clippy -D warnings` |
@@ -98,7 +108,7 @@ Every variable is documented in [`apps/web/.env.example`](apps/web/.env.example)
 | `npm run contracts:deploy` | deploy to testnet, write IDs to `apps/web/.env.local` + `contracts/deployments/testnet.json` |
 | `npm run contracts:smoke` | live testnet end-to-end check (buy, split, check-in, replay rejected, points, badge) |
 | `npm run contracts:shell` | shell inside the toolchain container (`stellar …`, `cargo …`) |
-| `npm run check` | typecheck + lint + contract tests |
+| `npm run check` | typecheck + lint + unit tests + contract tests + RLS tests |
 
 ## Deploy
 
@@ -109,6 +119,8 @@ Every variable is documented in [`apps/web/.env.example`](apps/web/.env.example)
   instances. Options: `USDC_MODE=circle`, `FEE_BPS=250`, `ORGANIZER=G…`
   (e.g. `docker compose run --rm -e ORGANIZER=G... soroban bash /work/scripts/deploy-testnet.sh`).
   Full interface: [docs/CONTRACTS.md](docs/CONTRACTS.md).
+- **Database:** apply `supabase/migrations` in order (Supabase MCP, `supabase db push`, or the SQL editor) and
+  configure Auth as described in [supabase/README.md](supabase/README.md).
 - **Web:** any Node host (Vercel, Fly, Render, or a VPS). Set every variable from `.env.example` in the host's
   environment; `NEXT_PUBLIC_*` values are baked in at build time, so rebuild after changing them.
 

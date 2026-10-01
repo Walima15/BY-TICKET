@@ -135,3 +135,59 @@ working so an event in progress isn't stranded at the door.
 address as `minter`. A ticket purchase or check-in and its rewards are therefore atomic: no points without
 a real purchase or check-in. Badge minting is idempotent per (event, attendee), so a user holding two tickets
 for the same event gets one badge.
+
+---
+
+## Phase 3 — Database & auth
+
+### D-022 Chain is the source of truth; Supabase mirrors it and holds off-chain data
+Tables that mirror contract state (`tickets`, `orders`, `ticket_transfers`, `checkins`, `points_ledger`,
+`badges`, `redemptions`) store the chain id and tx hash with unique constraints, and are written only with the
+service role after the server has verified the transaction (purchase flow in Phase 4, an event indexer later).
+Users get read-only access through RLS. The app re-reads `get_ticket` on-chain before trusting ownership
+in sensitive flows (QR credential, transfer).
+
+### D-023 Defence in depth: column grants + RLS + triggers
+RLS decides *which rows*; it can't stop a user from writing a column on a row they own. So the migration
+revokes Supabase's default `GRANT ALL` and grants back per-column `INSERT`/`UPDATE`. That keeps `status`,
+`chain_event_id`, `on_chain_approved_at` and review fields out of users' reach. Triggers lock chain-controlled
+event and tier fields after publishing. Status transitions (approve, publish, cancel) are RPCs or server
+actions that keep the database and the contract in sync.
+
+### D-024 Roles in a `user_roles` table, not JWT custom claims
+Simple, auditable, changeable without re-issuing tokens; the policy helpers (`has_role`, `is_admin`) read it via
+`SECURITY DEFINER`. Global roles are `customer` (implicit, granted at sign-up), `organizer` (granted on approval),
+`scanner` (granted when an organizer adds door staff, Phase 5) and `admin`. Per-event permissions live in
+`event_scanners` / event ownership. **Revisit:** a Supabase custom access-token hook if role lookups ever show up
+in query plans.
+
+### D-025 Email one-time code as the default sign-in
+Many users open email in a different app from their browser (Gmail app vs Chrome), which breaks PKCE magic
+links. So the login form asks for the 6-digit code; the email also carries a cross-device `/auth/confirm` link
+(template in `supabase/README.md`). No passwords. Wallet sign-in (Freighter, signed challenge) comes in Phase 4
+using `wallet_challenges`.
+
+### D-026 Custodial wallet provisioned at first sign-in, activated on first purchase
+Every account gets an encrypted custodial keypair right away (so tickets have an owner address), but
+creating the Stellar account and its USDC trustline costs reserves. The platform sponsors that only when the
+user first buys (Phase 4, `wallets.activated_at`). Ciphertexts bind the public key as AES-GCM associated
+data.
+
+### D-027 Organizer approval is two-step: database role now, contract allow-list in Phase 6
+`admin_review_organizer` grants the `organizer` role immediately. The contract's `approve_organizer` needs the
+contract admin's signature, and that key lives in the CLI keystore, not the web server. Phase 6 will add an
+operator path (either a dedicated operator key in server env with a narrow role, or a queued job run with the
+admin identity) and stamp `on_chain_approved_at`. Events can't be published until both are done, because
+publishing requires `chain_event_id`.
+
+### D-028 RLS tested against plain Postgres with a Supabase shim
+`supabase/tests/supabase_shim.sql` recreates just enough of Supabase (API roles and their default grants,
+`auth.users`, `auth.uid()`, `storage.objects`, `storage.foldername`) for the migrations to run in a stock
+`postgres:16` container. `npm run db:test` then runs 79 assertions as different users. It's fast and needs no
+project or CLI, and the same image generates the TypeScript types (`npm run db:types`, via Supabase's
+`postgres-meta`). **Caveat:** the shim isn't Supabase. Re-run the suite against the real project after
+applying the migrations (MCP or `supabase test db`).
+
+### D-029 Money columns are `numeric(39,0)` token units
+Same 7-decimal integer units as the contracts (i128 fits in 39 digits), so database and chain amounts
+compare exactly; formatting to USDC / ZMW happens in `lib/payments/pricing.ts`.

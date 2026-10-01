@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { stellarConfig } from "@/lib/stellar/config";
+import { AccountButton } from "./account-button";
 import { customerNav, staffNav } from "./nav-items";
 
 export function SiteHeader() {
@@ -16,7 +17,7 @@ export function SiteHeader() {
             Testnet
           </Badge>
         )}
-        <nav className="ml-auto hidden items-center gap-1 text-sm md:flex">
+        <nav className="ml-auto hidden items-center gap-1 text-sm md:flex" aria-label="Main">
           {[...customerNav.slice(1), ...staffNav].map((item) => (
             <Link
               key={item.href}
@@ -27,6 +28,9 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
+        <div className="ml-auto md:ml-2">
+          <AccountButton />
+        </div>
       </div>
     </header>
   );

@@ -21,6 +21,8 @@
     "contracts:smoke": "docker compose run --rm soroban bash /work/scripts/smoke-testnet.sh",
     "contracts:shell": "docker compose run --rm soroban bash",
     "db:test": "docker compose run --rm db-test",
-    "check": "npm run typecheck && npm run lint && npm run contracts:test && npm run db:test"
+    "db:types": "node scripts/gen-db-types.mjs",
+    "test": "npm --prefix apps/web run test",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run contracts:test && npm run db:test"
   }
 }

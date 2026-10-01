@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { publicEnv } from "@/lib/env";
+import type { Database } from "./database.types";
 
 export const supabaseConfigured = Boolean(
   publicEnv.NEXT_PUBLIC_SUPABASE_URL && publicEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
@@ -10,5 +11,8 @@ export function createSupabaseBrowserClient() {
   if (!supabaseConfigured) {
     throw new Error("Supabase is not configured: set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
   }
-  return createBrowserClient(publicEnv.NEXT_PUBLIC_SUPABASE_URL!, publicEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!);
+  return createBrowserClient<Database>(
+    publicEnv.NEXT_PUBLIC_SUPABASE_URL!,
+    publicEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+  );
 }

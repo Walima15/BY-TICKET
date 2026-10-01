@@ -1,7 +1,7 @@
 # API Reference
 
-> **Status:** Phase 1 ships `GET /api/health`. The other endpoints are the planned surface and are documented
-> here as they land in Phases 3–7.
+> **Status:** health check, auth routes, Server Actions and database RPCs are implemented (Phases 1 and 3).
+> The remaining endpoints are the planned surface, documented here as they land in Phases 4–7.
 
 Conventions:
 - JSON in/out, request bodies validated with zod; errors return `{ "error": { "code", "message", "details?" } }`.
@@ -23,6 +23,41 @@ Liveness and configuration check (never exposes secrets).
   "configured": { "supabase": false, "contracts": false, "qrSigning": false, "custodialKeys": false }
 }
 ```
+
+### Auth routes
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/auth/callback?code=&next=` | magic-link (PKCE) landing: exchanges the code for a session cookie, runs the sign-in bootstrap, redirects to `next` |
+| `GET` | `/auth/confirm?token_hash=&type=&next=` | email-template link that works across devices (`verifyOtp` with the token hash) |
+
+Both redirect to `/login?error=link` on failure. `next` is sanitised to same-origin paths.
+
+### Server Actions (form posts from the app)
+
+All validate with zod, are rate-limited per IP and per identity, and run as the signed-in user (RLS applies).
+
+| Action | Who | Input | Notes |
+|---|---|---|---|
+| `authenticate` (`/login`) | anyone | `intent=send`, `email` → `intent=verify`, `email`, `token` | email OTP; on success runs `afterSignIn` (admin bootstrap, custodial wallet) and redirects |
+| `signOut` | signed in | — | clears the session |
+| `updateProfile` (`/account`) | signed in | `display_name`, `phone?`, `city?` | |
+| `submitOrganizerApplication` (`/organizer`) | signed in | `name`, `slug?`, `city`, `contact_email`, `contact_phone`, `bio?`, `payout_public_key?` | creates a pending application, or updates and resubmits a rejected one |
+| `reviewOrganizer` (`/admin`) | admin | `organizer_id`, `status` (`approved` / `rejected` / `suspended`), `note?` | a note is required to reject |
+
+### Database RPCs (`supabase.rpc(name, args)`)
+
+`SECURITY DEFINER` functions that authorise the caller themselves; `anon` can't execute them.
+
+| RPC | Who | Returns |
+|---|---|---|
+| `my_organizer()` | signed in | the caller's organizer row, including private columns |
+| `resubmit_organizer()` | rejected applicant | — (status back to `pending`) |
+| `admin_list_organizers(p_status?)` | admin | applications with the applicant's account email |
+| `admin_review_organizer(p_organizer_id, p_status, p_note?)` | admin | updated organizer; grants/revokes the `organizer` role; audited |
+| `admin_set_role(p_user_id, p_role, p_enabled)` | admin | — (audited; admins can't remove their own admin role) |
+| `admin_update_setting(p_key, p_value)` | admin | — (audited) |
+| `admin_stats()` | admin | `{ users, organizers_pending, organizers_approved, events_published, tickets_sold, tickets_checked_in, gross_units }` |
 
 ## Planned
 
