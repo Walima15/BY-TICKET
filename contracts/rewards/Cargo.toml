@@ -1,0 +1,18 @@
+[package]
+name = "rewards"
+description = "BY Points: SEP-41 loyalty token minted on purchase/attendance, redeemable for perks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
