@@ -191,3 +191,25 @@ applying the migrations (MCP or `supabase test db`).
 ### D-029 Money columns are `numeric(39,0)` token units
 Same 7-decimal integer units as the contracts (i128 fits in 39 digits), so database and chain amounts
 compare exactly; formatting to USDC / ZMW happens in `lib/payments/pricing.ts`.
+
+### D-030 Policy helpers live in a `private` schema
+The Supabase security advisor (lints 0028/0029) flagged `SECURITY DEFINER` helpers in `public`, because PostgREST
+exposes every `public` function as `/rest/v1/rpc/<name>`. Migration `20261026000500_private_helpers.sql` moves
+them to `private` (policies reference functions by OID, so they keep working) and revokes direct calls to the
+signup trigger functions. The advisor still lists `my_organizer`, `resubmit_organizer` and `admin_*` under 0029:
+that's intended, since they are the app's RPCs and check the caller themselves. The 0008 notices ("RLS enabled,
+no policy") on `custodial_keys`, `wallet_challenges`, `idempotency_keys` and `chain_cursors` are also intended.
+
+### D-031 Freighter wallets are linked by signing a one-time message
+`/account` → Connect Freighter: the server issues a challenge (32-byte nonce, 5-minute expiry, stored in
+`wallet_challenges`), Freighter signs it with `signMessage` (SEP-53 hash; older Freighter's plain SHA-256 is also
+accepted since both cover the whole text), and the server claims the challenge in one conditional `UPDATE`
+before verifying and inserting the wallet. The signed text names the domain, wallet and network, so a signature
+can't be reused elsewhere. Linking writes `audit_log`. Max 3 Freighter wallets per account; the custodial wallet
+can't be removed. No on-chain transaction is needed to link, so it costs nothing.
+
+### D-032 No Docker going forward
+The user asked not to use Docker in this project. Supabase work goes through the Supabase MCP (migrations,
+advisors, type generation). The Docker-based scripts (`contracts:*`, `db:test`, `db:types`) are still in the repo
+and still pending a replacement decision: where contracts are built and tested (D-014), how the RLS suite runs,
+and where the contract admin key currently in the `by-stellar-config` volume should live.

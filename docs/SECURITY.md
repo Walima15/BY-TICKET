@@ -45,7 +45,7 @@ Rules:
 | Chain mirrors | `orders`, `tickets`, `ticket_transfers`, `checkins`, `points_ledger`, `badges`, `redemptions` have **no write grants** for users. Only server code that verified the Stellar transaction writes them |
 | Locked after publish | triggers block user edits to capacity, transfer rules, splits, start time and tier prices once an event is on-chain; changes go through the server, which updates the contract first |
 | Integrity | unique `chain_*_id` and `tx_hash` columns make indexing idempotent; one accepted check-in per ticket; one order per `(user, idempotency_key)`; publish requires an on-chain event id |
-| Helpers | `SECURITY DEFINER` functions with `search_path = ''`; the policies call them instead of recursing through RLS |
+| Helpers | `SECURITY DEFINER` functions with `search_path = ''` in a `private` schema the API doesn't expose, so they can't be called as `/rest/v1/rpc/...`; the policies call them instead of recursing through RLS. Only the intended RPCs (`my_organizer`, `resubmit_organizer`, `admin_*`) stay in `public`, and each checks the caller itself |
 | Storage | `public-media` bucket: public read, writes only under `avatars/<your user id>/` or `organizers/<your organizer id>/`, images ≤ 5 MB |
 
 Verified by `npm run db:test` (79 checks covering role escalation, cross-user reads, forged chain rows, locked
@@ -62,5 +62,6 @@ fields, double check-in, double orders, storage paths).
 | Double-spend of points | SEP-41 balances on-chain; redemption burns atomically |
 | Scalping | `max_transfers`, `resale_cap` enforced on-chain |
 | Brute force / abuse | per-IP + per-user rate limiting on auth, purchase and check-in endpoints |
+| Linking someone else's wallet | Freighter must sign a one-time server challenge (SEP-53) naming our domain, the wallet, the network and a 5-minute expiry; the challenge is claimed with a single conditional `UPDATE`, so it can't be replayed; a wallet can belong to only one account |
 | Data leakage between tenants | Postgres row-level security on every table; organizers see only their events |
 | Injection / malformed input | zod validation on every route handler and server action |

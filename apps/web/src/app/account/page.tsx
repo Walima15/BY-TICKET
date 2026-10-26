@@ -4,6 +4,8 @@ import { ExternalLink, LogOut, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConnectFreighter } from "@/components/wallet/connect-freighter";
+import { RemoveWalletButton } from "@/components/wallet/remove-wallet-button";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { requireViewer } from "@/lib/auth/session";
 import { explorerUrl } from "@/lib/stellar/config";
@@ -75,6 +77,7 @@ export default async function AccountPage() {
               <span className="font-medium">{w.kind === "custodial" ? "BY Tickets wallet" : "Freighter"}</span>
               {w.is_primary && <Badge variant="secondary">Primary</Badge>}
               {w.kind === "custodial" && !w.activated_at && <Badge variant="outline">Activates on first purchase</Badge>}
+              {w.kind === "freighter" && w.verified_at && <Badge variant="outline">Verified</Badge>}
               <Link
                 href={explorerUrl("account", w.public_key)}
                 target="_blank"
@@ -84,9 +87,16 @@ export default async function AccountPage() {
                 {shortKey(w.public_key)}
                 <ExternalLink className="size-3" aria-hidden />
               </Link>
+              {w.kind === "freighter" && !w.is_primary && <RemoveWalletButton walletId={w.id} />}
             </div>
           ))}
-          <p className="text-muted-foreground text-xs">Connecting your own Freighter wallet arrives with checkout.</p>
+          <div className="space-y-1 pt-2">
+            <p className="text-muted-foreground text-xs">
+              Have a Stellar wallet? Link Freighter to pay with it and keep tickets in your own wallet. You&apos;ll sign
+              a one-time message; it doesn&apos;t move any funds.
+            </p>
+            <ConnectFreighter />
+          </div>
         </CardContent>
       </Card>
     </div>
